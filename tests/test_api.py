@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.ml.registry import clear_current_model
 
 
 client = TestClient(app)
@@ -195,6 +196,25 @@ def test_predict_endpoint_after_training():
     assert 0 <= prediction["probability_churn"] <= 1
 
 
+def test_predict_without_loaded_model_returns_error():
+    """
+    Prediction without loaded model should return MODEL_NOT_LOADED error.
+    """
+
+    clear_current_model()
+
+    response = client.post(
+        "/predict",
+        json=VALID_FEATURE_VECTOR,
+    )
+    data = response.json()
+
+    assert response.status_code == 409
+    assert data["code"] == "MODEL_NOT_LOADED"
+    assert data["message"] == "Model is not trained or not loaded."
+    assert "hint" in data["details"]
+
+
 def test_predict_validation_error():
     """
     Invalid prediction input should return standard validation error.
@@ -243,4 +263,5 @@ def test_train_model_wrong_hyperparameter_error():
     assert response.status_code == 400
     assert data["code"] == "MODEL_TRAINING_ERROR"
     assert data["message"] == "Model training failed because of invalid hyperparameters."
-    assert "error" in data["details"]
+    assert "hint" in data["details"]
+    assert "error" not in data["details"]

@@ -21,6 +21,29 @@ def test_build_churn_pipeline_returns_pipeline():
     assert hyperparameters["random_state"] == 42
 
 
+def test_build_churn_pipeline_contains_imputers():
+    """
+    The preprocessing pipeline should contain imputers for missing values.
+    """
+
+    pipeline, _ = build_churn_pipeline(
+        model_type="logreg",
+        hyperparameters={},
+        random_state=42,
+    )
+
+    preprocessor = pipeline.named_steps["preprocessor"]
+
+    numeric_pipeline = preprocessor.transformers[0][1]
+    categorical_pipeline = preprocessor.transformers[1][1]
+
+    assert "imputer" in numeric_pipeline.named_steps
+    assert "scaler" in numeric_pipeline.named_steps
+
+    assert "imputer" in categorical_pipeline.named_steps
+    assert "encoder" in categorical_pipeline.named_steps
+
+
 def test_build_churn_pipeline_supports_random_forest():
     """
     build_churn_pipeline should support random_forest model type.

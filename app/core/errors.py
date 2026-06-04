@@ -2,13 +2,18 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.core.logging import get_logger
+
+
+logger = get_logger(__name__)
+
 
 class ErrorCode:
     """
     Application-level error codes.
 
-    These codes are useful for API clients because they are stable
-    and easier to process than plain text messages.
+    These codes are stable and easier for API clients to process
+    than raw exception messages.
     """
 
     VALIDATION_ERROR = "VALIDATION_ERROR"
@@ -44,12 +49,11 @@ def build_error_response(
 
 def extract_http_error_data(exception: HTTPException) -> tuple[str, str, dict | list | None]:
     """
-    Extract error code, message, and details from HTTPException.
+    Extract error code, message, and safe details from HTTPException.
 
-    HTTPException.detail can be either:
-    - string
-    - dictionary
-    - list
+    Important:
+        We do not expose raw internal exception messages here.
+        Endpoint code should pass only safe client-facing details.
     """
 
     if isinstance(exception.detail, dict):
@@ -120,14 +124,17 @@ def register_exception_handlers(app: FastAPI) -> None:
         """
         Handle unexpected server errors.
 
-        In production, this is where we would also log the exception.
+        Technical details are logged for developers,
+        but they are not returned to API clients.
         """
+
+        logger.exception("Unhandled internal server error.")
 
         return JSONResponse(
             status_code=500,
             content=build_error_response(
                 code=ErrorCode.INTERNAL_SERVER_ERROR,
                 message="Unexpected internal server error.",
-                details={"error": str(exception)},
+                details={},
             ),
         )

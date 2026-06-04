@@ -3,16 +3,19 @@ from typing import Union
 from fastapi import APIRouter, Body, HTTPException, status
 
 from app.core.errors import ErrorCode
+from app.core.logging import get_logger
 from app.ml.prediction import predict_churn
 from app.ml.registry import get_current_model, is_model_loaded
 from app.schemas.churn import FeatureVectorChurn, PredictionResponseChurn
-from app.core.logging import get_logger
+
 
 router = APIRouter(
     tags=["Prediction"],
 )
 
+
 logger = get_logger(__name__)
+
 
 @router.post(
     "/predict",
@@ -27,13 +30,6 @@ def predict(
 ):
     """
     Predict churn for one or many customers.
-
-    The endpoint returns:
-    - predicted churn class
-    - probability of not churn
-    - probability of churn
-
-    A trained model must be loaded before this endpoint can be used.
     """
 
     if not is_model_loaded():
@@ -83,6 +79,8 @@ def predict(
             detail={
                 "code": ErrorCode.PREDICTION_ERROR,
                 "message": "Prediction failed.",
-                "details": {"error": str(error)},
+                "details": {
+                    "hint": "Check that the input contains all required features with valid values."
+                },
             },
         ) from error

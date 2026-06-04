@@ -29,7 +29,9 @@ router = APIRouter(
     tags=["Model"],
 )
 
+
 logger = get_logger(__name__)
+
 
 @router.post(
     "/train",
@@ -37,8 +39,6 @@ logger = get_logger(__name__)
     summary="Train and save churn model",
 )
 def train_model(
-
-
     config: TrainingConfigChurn | None = Body(
         default=None,
         description="Training configuration. If omitted, logreg with default parameters is used.",
@@ -57,16 +57,6 @@ def train_model(
 ):
     """
     Train the churn classification model and save it to disk.
-
-    Supported model types:
-    - logreg
-    - random_forest
-
-    After training:
-    - the model is saved as a joblib file
-    - metadata is saved as a JSON file
-    - training history is updated
-    - the model is stored in memory for predictions
     """
 
     try:
@@ -113,32 +103,44 @@ def train_model(
         return response_data
 
     except FileNotFoundError as error:
+        logger.exception("Model training failed because dataset file was not found.")
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "code": ErrorCode.DATASET_NOT_FOUND,
                 "message": "Dataset file was not found.",
-                "details": {"error": str(error)},
+                "details": {
+                    "hint": "Make sure data/churn_dataset.csv exists."
+                },
             },
         ) from error
 
     except ValueError as error:
+        logger.exception("Model training failed because of invalid dataset or configuration.")
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "code": ErrorCode.INVALID_DATASET,
                 "message": "Invalid input data or training configuration.",
-                "details": {"error": str(error)},
+                "details": {
+                    "hint": "Check dataset structure, test_size, model_type and hyperparameters."
+                },
             },
         ) from error
 
     except TypeError as error:
+        logger.exception("Model training failed because of invalid hyperparameters.")
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "code": ErrorCode.MODEL_TRAINING_ERROR,
                 "message": "Model training failed because of invalid hyperparameters.",
-                "details": {"error": str(error)},
+                "details": {
+                    "hint": "Check that hyperparameter names are valid for the selected model_type."
+                },
             },
         ) from error
 
@@ -151,13 +153,6 @@ def train_model(
 def model_status():
     """
     Return information about the current model.
-
-    This endpoint shows:
-    - whether a model file exists
-    - whether the model is loaded in memory
-    - when the model was trained
-    - what metrics it has
-    - what hyperparameters were used
     """
 
     metadata = load_model_metadata()
@@ -183,9 +178,6 @@ def model_status():
 def model_schema():
     """
     Return the input schema expected by the churn model.
-
-    This endpoint helps API users understand what fields they must send
-    to POST /predict.
     """
 
     return get_model_input_schema()
@@ -210,8 +202,6 @@ def model_metrics(
 ):
     """
     Return latest model metrics and recent training history.
-
-    This endpoint helps compare different training runs.
     """
 
     return {

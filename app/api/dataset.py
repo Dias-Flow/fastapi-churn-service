@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.core.errors import ErrorCode
+from app.core.logging import get_logger
 from app.ml.data import get_dataset_info, get_dataset_preview, get_split_info
 from app.schemas.churn import DatasetInfoResponse, DatasetRowChurn, SplitInfoResponse
 
@@ -9,6 +10,9 @@ router = APIRouter(
     prefix="/dataset",
     tags=["Dataset"],
 )
+
+
+logger = get_logger(__name__)
 
 
 @router.get(
@@ -26,30 +30,36 @@ def preview_dataset(
 ):
     """
     Return the first rows from churn_dataset.csv.
-
-    This endpoint is useful for checking that the dataset was loaded correctly.
     """
 
     try:
         return get_dataset_preview(limit=limit)
 
     except FileNotFoundError as error:
+        logger.exception("Dataset preview failed because dataset file was not found.")
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "code": ErrorCode.DATASET_NOT_FOUND,
                 "message": "Dataset file was not found.",
-                "details": {"error": str(error)},
+                "details": {
+                    "hint": "Make sure data/churn_dataset.csv exists."
+                },
             },
         ) from error
 
     except ValueError as error:
+        logger.exception("Dataset preview failed because dataset is invalid.")
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "code": ErrorCode.INVALID_DATASET,
                 "message": "Dataset is invalid.",
-                "details": {"error": str(error)},
+                "details": {
+                    "hint": "Check that the dataset is not empty and contains all required columns."
+                },
             },
         ) from error
 
@@ -62,35 +72,36 @@ def preview_dataset(
 def dataset_info():
     """
     Return basic information about churn_dataset.csv.
-
-    The response includes:
-    - number of rows
-    - number of columns
-    - feature names
-    - target name
-    - churn class distribution
     """
 
     try:
         return get_dataset_info()
 
     except FileNotFoundError as error:
+        logger.exception("Dataset info failed because dataset file was not found.")
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "code": ErrorCode.DATASET_NOT_FOUND,
                 "message": "Dataset file was not found.",
-                "details": {"error": str(error)},
+                "details": {
+                    "hint": "Make sure data/churn_dataset.csv exists."
+                },
             },
         ) from error
 
     except ValueError as error:
+        logger.exception("Dataset info failed because dataset is invalid.")
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "code": ErrorCode.INVALID_DATASET,
                 "message": "Dataset is invalid.",
-                "details": {"error": str(error)},
+                "details": {
+                    "hint": "Check that the dataset is not empty and contains all required columns."
+                },
             },
         ) from error
 
@@ -115,9 +126,6 @@ def dataset_split_info(
 ):
     """
     Return information about train/test split.
-
-    This endpoint does not train the model.
-    It only shows how the dataset will be split before training.
     """
 
     try:
@@ -127,21 +135,29 @@ def dataset_split_info(
         )
 
     except FileNotFoundError as error:
+        logger.exception("Dataset split info failed because dataset file was not found.")
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "code": ErrorCode.DATASET_NOT_FOUND,
                 "message": "Dataset file was not found.",
-                "details": {"error": str(error)},
+                "details": {
+                    "hint": "Make sure data/churn_dataset.csv exists."
+                },
             },
         ) from error
 
     except ValueError as error:
+        logger.exception("Dataset split info failed because dataset is invalid.")
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "code": ErrorCode.INVALID_DATASET,
                 "message": "Dataset is invalid.",
-                "details": {"error": str(error)},
+                "details": {
+                    "hint": "Check test_size, random_state and dataset structure."
+                },
             },
         ) from error
