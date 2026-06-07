@@ -62,6 +62,7 @@ class FeatureVectorChurn(BaseModel):
     )
 
     model_config = ConfigDict(
+        extra="forbid",
         json_schema_extra={
             "example": {
                 "monthly_fee": 29.99,
@@ -74,7 +75,7 @@ class FeatureVectorChurn(BaseModel):
                 "payment_method": "card",
                 "autopay_enabled": 1,
             }
-        }
+        },
     )
 
 
@@ -148,6 +149,7 @@ class TrainingConfigChurn(BaseModel):
     )
 
     model_config = ConfigDict(
+        extra="forbid",
         json_schema_extra={
             "examples": [
                 {

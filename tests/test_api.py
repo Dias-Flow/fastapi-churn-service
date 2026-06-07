@@ -163,6 +163,32 @@ def test_train_model_endpoint():
     assert 0 <= data["accuracy"] <= 1
     assert 0 <= data["f1"] <= 1
 
+def test_train_model_extra_field_returns_validation_error():
+    """
+    Training config with extra top-level fields should be rejected.
+    """
+
+    response = client.post(
+        "/model/train",
+        json={
+            "model_type": "logreg",
+            "hyperparameters": {},
+            "unexpected_field": "not allowed",
+        },
+    )
+    data = response.json()
+
+    assert response.status_code == 422
+    assert data["code"] == "VALIDATION_ERROR"
+    assert data["message"] == "Request validation failed."
+
+    error_types = [
+        error["type"]
+        for error in data["details"]
+    ]
+
+    assert "extra_forbidden" in error_types
+
 
 def test_predict_endpoint_after_training():
     """
@@ -243,6 +269,35 @@ def test_predict_validation_error():
     assert data["message"] == "Request validation failed."
     assert isinstance(data["details"], list)
 
+def test_predict_extra_field_returns_validation_error():
+    """
+    Prediction input with extra fields should be rejected.
+
+    The model expects an exact feature set.
+    Extra fields mean the request has an invalid number of features.
+    """
+
+    payload = {
+        **VALID_FEATURE_VECTOR,
+        "unexpected_feature": "not allowed",
+    }
+
+    response = client.post(
+        "/predict",
+        json=payload,
+    )
+    data = response.json()
+
+    assert response.status_code == 422
+    assert data["code"] == "VALIDATION_ERROR"
+    assert data["message"] == "Request validation failed."
+
+    error_types = [
+        error["type"]
+        for error in data["details"]
+    ]
+
+    assert "extra_forbidden" in error_types
 
 def test_train_model_wrong_hyperparameter_error():
     """
