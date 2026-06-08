@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.ml.registry import clear_current_model
+from pathlib import Path
 
 
 client = TestClient(app)
@@ -19,6 +20,48 @@ VALID_FEATURE_VECTOR = {
     "autopay_enabled": 1,
 }
 
+def test_train_model_does_not_write_to_real_model_artifacts():
+    """
+    Training tests should not mutate real project model artifacts.
+
+    The test isolation fixture should redirect model writes to tmp_path.
+    """
+
+    real_model_path = Path("models/churn_model.joblib")
+    real_metadata_path = Path("models/churn_metadata.json")
+
+    model_exists_before = real_model_path.exists()
+    metadata_exists_before = real_metadata_path.exists()
+
+    model_mtime_before = (
+        real_model_path.stat().st_mtime
+        if model_exists_before
+        else None
+    )
+    metadata_mtime_before = (
+        real_metadata_path.stat().st_mtime
+        if metadata_exists_before
+        else None
+    )
+
+    response = client.post(
+        "/model/train",
+        json={
+            "model_type": "logreg",
+            "hyperparameters": {}
+        },
+    )
+
+    assert response.status_code == 200
+
+    assert real_model_path.exists() == model_exists_before
+    assert real_metadata_path.exists() == metadata_exists_before
+
+    if model_exists_before:
+        assert real_model_path.stat().st_mtime == model_mtime_before
+
+    if metadata_exists_before:
+        assert real_metadata_path.stat().st_mtime == metadata_mtime_before
 
 def test_root_endpoint():
     """

@@ -21,13 +21,11 @@ async def lifespan(app: FastAPI):
     """
     Application lifespan handler.
 
-    It runs once when the application starts and once when it shuts down.
-
     On startup:
         The app tries to load a previously saved ML model from disk.
 
-    On shutdown:
-        Nothing special is required at this stage.
+    If the model file is missing, corrupted, or incompatible,
+    the application still starts without a loaded model.
     """
 
     try:
@@ -45,15 +43,19 @@ async def lifespan(app: FastAPI):
         clear_current_model()
         logger.info("No saved churn model found. Train the model using POST /model/train.")
 
+    except Exception:
+        clear_current_model()
+        logger.exception(
+            "Saved churn model could not be loaded. "
+            "Application will start without a loaded model."
+        )
+
     yield
 
 
 def create_app() -> FastAPI:
     """
     Create and configure the FastAPI application.
-
-    Keeping application creation inside a function is a good practice.
-    It makes the project easier to test and extend later.
     """
 
     setup_logging()
@@ -75,8 +77,6 @@ def create_app() -> FastAPI:
     def root():
         """
         Root endpoint.
-
-        It returns a simple message showing that the service is running.
         """
 
         return {"message": "ml churn service is running"}

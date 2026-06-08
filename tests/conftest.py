@@ -17,8 +17,6 @@ def isolate_model_artifacts(tmp_path, monkeypatch):
     - models/churn_model.joblib
     - models/churn_metadata.json
     - models/churn_training_history.json
-
-    Instead, each test gets its own temporary models directory.
     """
 
     models_dir = tmp_path / "models"
