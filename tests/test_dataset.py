@@ -1,10 +1,28 @@
+import pandas as pd
+import pytest
+
 from app.ml.data import (
     create_train_test_split,
     get_dataset_info,
     get_dataset_preview,
     load_churn_dataset,
+    validate_churn_dataset,
 )
 from app.ml.features import FEATURE_COLUMNS, TARGET_COLUMN
+
+
+VALID_DATASET_ROW = {
+    "monthly_fee": 29.99,
+    "usage_hours": 12.5,
+    "support_requests": 2,
+    "account_age_months": 8,
+    "failed_payments": 1,
+    "autopay_enabled": 1,
+    "region": "europe",
+    "device_type": "mobile",
+    "payment_method": "card",
+    "churn": 0,
+}
 
 
 def test_load_churn_dataset_returns_dataframe():
@@ -64,3 +82,83 @@ def test_create_train_test_split_returns_expected_shapes():
     assert len(y_train) + len(y_test) == len(dataframe)
     assert len(X_train) == len(y_train)
     assert len(X_test) == len(y_test)
+
+
+def test_validate_churn_dataset_accepts_valid_dataframe():
+    """
+    Valid dataset rows should pass validation.
+    """
+
+    dataframe = pd.DataFrame([VALID_DATASET_ROW])
+
+    validate_churn_dataset(dataframe)
+
+
+def test_validate_churn_dataset_rejects_missing_column():
+    """
+    Dataset without a required column should be rejected.
+    """
+
+    row = VALID_DATASET_ROW.copy()
+    row.pop("monthly_fee")
+
+    dataframe = pd.DataFrame([row])
+
+    with pytest.raises(ValueError, match="missing required columns"):
+        validate_churn_dataset(dataframe)
+
+
+def test_validate_churn_dataset_rejects_unexpected_column():
+    """
+    Dataset with unexpected columns should be rejected.
+    """
+
+    row = VALID_DATASET_ROW.copy()
+    row["unexpected_column"] = "not allowed"
+
+    dataframe = pd.DataFrame([row])
+
+    with pytest.raises(ValueError, match="unexpected columns"):
+        validate_churn_dataset(dataframe)
+
+
+def test_validate_churn_dataset_rejects_invalid_category():
+    """
+    Dataset rows with invalid categorical values should be rejected.
+    """
+
+    row = VALID_DATASET_ROW.copy()
+    row["region"] = "moon"
+
+    dataframe = pd.DataFrame([row])
+
+    with pytest.raises(ValueError, match="Dataset contains rows"):
+        validate_churn_dataset(dataframe)
+
+
+def test_validate_churn_dataset_rejects_invalid_target():
+    """
+    Dataset rows with invalid churn values should be rejected.
+    """
+
+    row = VALID_DATASET_ROW.copy()
+    row["churn"] = 7
+
+    dataframe = pd.DataFrame([row])
+
+    with pytest.raises(ValueError, match="Dataset contains rows"):
+        validate_churn_dataset(dataframe)
+
+
+def test_validate_churn_dataset_rejects_invalid_numeric_value():
+    """
+    Dataset rows with invalid numeric constraints should be rejected.
+    """
+
+    row = VALID_DATASET_ROW.copy()
+    row["monthly_fee"] = -10
+
+    dataframe = pd.DataFrame([row])
+
+    with pytest.raises(ValueError, match="Dataset contains rows"):
+        validate_churn_dataset(dataframe)

@@ -1,8 +1,10 @@
 import pandas as pd
+from pydantic import ValidationError
 from sklearn.model_selection import train_test_split
 
 from app.core.config import DATASET_PATH
 from app.ml.features import FEATURE_COLUMNS, REQUIRED_COLUMNS, TARGET_COLUMN
+from app.schemas.churn import DatasetRowChurn
 
 
 def load_churn_dataset() -> pd.DataFrame:
@@ -14,7 +16,7 @@ def load_churn_dataset() -> pd.DataFrame:
 
     Raises:
         FileNotFoundError: If the dataset file does not exist.
-        ValueError: If the dataset has invalid structure.
+        ValueError: If the dataset has invalid structure or invalid rows.
     """
 
     if not DATASET_PATH.exists():
@@ -30,26 +32,49 @@ def load_churn_dataset() -> pd.DataFrame:
 
 def validate_churn_dataset(dataframe: pd.DataFrame) -> None:
     """
-    Validate that the dataset contains all required columns and is not empty.
+    Validate that the dataset has the required structure.
 
-    Args:
-        dataframe: Dataset loaded as a pandas DataFrame.
+    The validation checks:
+    - dataset is not empty
+    - all required columns exist
+    - there are no unexpected columns
+    - every row matches DatasetRowChurn schema
 
     Raises:
-        ValueError: If the dataset is empty or required columns are missing.
+        ValueError: If the dataset is invalid.
     """
 
     if dataframe.empty:
         raise ValueError("Dataset is empty.")
 
     missing_columns = [
-        column for column in REQUIRED_COLUMNS if column not in dataframe.columns
+        column for column in REQUIRED_COLUMNS
+        if column not in dataframe.columns
     ]
 
     if missing_columns:
         raise ValueError(
             f"Dataset is missing required columns: {missing_columns}"
         )
+
+    unexpected_columns = [
+        column for column in dataframe.columns
+        if column not in REQUIRED_COLUMNS
+    ]
+
+    if unexpected_columns:
+        raise ValueError(
+            f"Dataset contains unexpected columns: {unexpected_columns}"
+        )
+
+    try:
+        for row in dataframe[REQUIRED_COLUMNS].to_dict(orient="records"):
+            DatasetRowChurn.model_validate(row)
+
+    except ValidationError as error:
+        raise ValueError(
+            "Dataset contains rows that do not match DatasetRowChurn schema."
+        ) from error
 
 
 def get_dataset_preview(limit: int = 5) -> list[dict]:
@@ -116,14 +141,6 @@ def create_train_test_split(
 
     Stratification is used to keep churn class proportions similar
     in both train and test datasets.
-
-    Args:
-        dataframe: Full churn dataset.
-        test_size: Fraction of the dataset used for testing.
-        random_state: Seed for reproducibility.
-
-    Returns:
-        X_train, X_test, y_train, y_test.
     """
 
     X, y = split_features_and_target(dataframe)
@@ -140,12 +157,6 @@ def create_train_test_split(
 def get_class_distribution(target: pd.Series) -> dict[int, int]:
     """
     Count how many examples belong to each target class.
-
-    Args:
-        target: Target values.
-
-    Returns:
-        Dictionary where keys are class labels and values are counts.
     """
 
     return {
@@ -160,13 +171,6 @@ def get_split_info(
 ) -> dict:
     """
     Return information about train/test split.
-
-    Args:
-        test_size: Fraction of the dataset used for testing.
-        random_state: Seed for reproducibility.
-
-    Returns:
-        Dictionary with train/test sizes and class distributions.
     """
 
     dataframe = load_churn_dataset()
