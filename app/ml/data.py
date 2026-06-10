@@ -1,22 +1,28 @@
 import pandas as pd
-from pydantic import ValidationError
 from sklearn.model_selection import train_test_split
 
 from app.core.config import DATASET_PATH
-from app.ml.features import FEATURE_COLUMNS, REQUIRED_COLUMNS, TARGET_COLUMN
-from app.schemas.churn import DatasetRowChurn
+from app.ml.features import (
+    ALLOWED_CATEGORIES,
+    CATEGORICAL_FEATURES,
+    FEATURE_COLUMNS,
+    NUMERIC_FEATURES,
+    REQUIRED_COLUMNS,
+    TARGET_COLUMN,
+)
 
 
 def load_churn_dataset() -> pd.DataFrame:
     """
     Load the churn dataset from a CSV file.
 
-    Returns:
-        A pandas DataFrame with the dataset.
+    The dataset is validated structurally before training.
+    Missing feature values are allowed because they are handled later
+    by SimpleImputer inside the sklearn preprocessing pipeline.
 
     Raises:
         FileNotFoundError: If the dataset file does not exist.
-        ValueError: If the dataset has invalid structure or invalid rows.
+        ValueError: If the dataset has invalid structure or invalid values.
     """
 
     if not DATASET_PATH.exists():
@@ -26,29 +32,36 @@ def load_churn_dataset() -> pd.DataFrame:
 
     dataframe = pd.read_csv(DATASET_PATH)
     validate_churn_dataset(dataframe)
+    dataframe = normalize_churn_dataset(dataframe)
 
     return dataframe
 
 
 def validate_churn_dataset(dataframe: pd.DataFrame) -> None:
     """
-    Validate that the dataset has the required structure.
+    Validate churn dataset structure and non-missing values.
 
-    The validation checks:
+    This function checks:
     - dataset is not empty
     - all required columns exist
     - there are no unexpected columns
-    - every row matches DatasetRowChurn schema
+    - target column has no missing values
+    - target values are only 0 or 1
+    - numeric feature values are numeric when present
+    - numeric feature values satisfy basic constraints when present
+    - categorical feature values are allowed when present
 
-    Raises:
-        ValueError: If the dataset is invalid.
+    Important:
+        Missing values in feature columns are allowed here.
+        They are handled by SimpleImputer in the preprocessing pipeline.
     """
 
     if dataframe.empty:
         raise ValueError("Dataset is empty.")
 
     missing_columns = [
-        column for column in REQUIRED_COLUMNS
+        column
+        for column in REQUIRED_COLUMNS
         if column not in dataframe.columns
     ]
 
@@ -58,7 +71,8 @@ def validate_churn_dataset(dataframe: pd.DataFrame) -> None:
         )
 
     unexpected_columns = [
-        column for column in dataframe.columns
+        column
+        for column in dataframe.columns
         if column not in REQUIRED_COLUMNS
     ]
 
@@ -67,25 +81,93 @@ def validate_churn_dataset(dataframe: pd.DataFrame) -> None:
             f"Dataset contains unexpected columns: {unexpected_columns}"
         )
 
-    try:
-        for row in dataframe[REQUIRED_COLUMNS].to_dict(orient="records"):
-            DatasetRowChurn.model_validate(row)
+    if dataframe[TARGET_COLUMN].isna().any():
+        raise ValueError("Target column contains missing values.")
 
-    except ValidationError as error:
-        raise ValueError(
-            "Dataset contains rows that do not match DatasetRowChurn schema."
-        ) from error
+    target_values = pd.to_numeric(
+        dataframe[TARGET_COLUMN],
+        errors="coerce",
+    )
 
+    if target_values.isna().any():
+        raise ValueError("Target column must contain numeric values.")
+
+    if not target_values.isin([0, 1]).all():
+        raise ValueError("Target column must contain only 0 and 1 values.")
+
+    for column in NUMERIC_FEATURES:
+        non_missing_values = dataframe[column].dropna()
+
+        numeric_values = pd.to_numeric(
+            non_missing_values,
+            errors="coerce",
+        )
+
+        if numeric_values.isna().any():
+            raise ValueError(f"Column {column} must contain numeric values.")
+
+        if column == "monthly_fee" and (numeric_values <= 0).any():
+            raise ValueError("Column monthly_fee must contain positive values.")
+
+        if column != "monthly_fee" and (numeric_values < 0).any():
+            raise ValueError(f"Column {column} must contain non-negative values.")
+
+        if column in {
+            "support_requests",
+            "account_age_months",
+            "failed_payments",
+            "autopay_enabled",
+        }:
+            has_fractional_values = (numeric_values % 1 != 0).any()
+
+            if has_fractional_values:
+                raise ValueError(f"Column {column} must contain integer values.")
+
+        if column == "autopay_enabled":
+            invalid_autopay_values = set(numeric_values.astype(int).unique()) - {0, 1}
+
+            if invalid_autopay_values:
+                raise ValueError("Column autopay_enabled must contain only 0 and 1 values.")
+
+    for column in CATEGORICAL_FEATURES:
+        non_missing_values = dataframe[column].dropna()
+        allowed_values = set(ALLOWED_CATEGORIES[column])
+        actual_values = set(non_missing_values.unique())
+
+        invalid_values = actual_values - allowed_values
+
+        if invalid_values:
+            raise ValueError(
+                f"Column {column} contains invalid categories: {sorted(invalid_values)}"
+            )
+
+def normalize_churn_dataset(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normalize dataset column types after validation.
+
+    Missing feature values are preserved for SimpleImputer.
+    Target values are converted to integers because classifiers and
+    prediction logic expect classes 0 and 1.
+    """
+
+    normalized_dataframe = dataframe.copy()
+
+    for column in NUMERIC_FEATURES:
+        normalized_dataframe[column] = pd.to_numeric(
+            normalized_dataframe[column],
+            errors="coerce",
+        )
+
+    normalized_dataframe[TARGET_COLUMN] = pd.to_numeric(
+        normalized_dataframe[TARGET_COLUMN],
+        errors="coerce",
+    ).astype(int)
+
+    return normalized_dataframe
 
 def get_dataset_preview(limit: int = 5) -> list[dict]:
     """
     Return the first N rows from the churn dataset.
-
-    Args:
-        limit: Number of rows to return.
-
-    Returns:
-        A list of dataset rows represented as dictionaries.
     """
 
     dataframe = load_churn_dataset()
@@ -96,10 +178,6 @@ def get_dataset_preview(limit: int = 5) -> list[dict]:
 def get_dataset_info() -> dict:
     """
     Return basic information about the churn dataset.
-
-    Returns:
-        A dictionary with rows count, columns count, feature names,
-        target name, and churn class distribution.
     """
 
     dataframe = load_churn_dataset()
@@ -116,13 +194,6 @@ def get_dataset_info() -> dict:
 def split_features_and_target(dataframe: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     """
     Split the dataset into input features X and target variable y.
-
-    Args:
-        dataframe: Full churn dataset.
-
-    Returns:
-        X: Feature matrix.
-        y: Target vector.
     """
 
     X = dataframe[FEATURE_COLUMNS]

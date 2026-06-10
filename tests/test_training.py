@@ -1,3 +1,5 @@
+import numpy as np
+import pandas as pd
 from sklearn.pipeline import Pipeline
 
 from app.ml.training import build_churn_pipeline, train_churn_model
@@ -102,3 +104,72 @@ def test_train_churn_model_returns_metrics():
     assert 0 <= result["f1"] <= 1
     assert result["train_rows"] > 0
     assert result["test_rows"] > 0
+
+def test_churn_pipeline_handles_missing_feature_values():
+    """
+    The training pipeline should handle missing feature values.
+
+    Missing values are processed by SimpleImputer inside the preprocessing step.
+    """
+
+    X = pd.DataFrame(
+        [
+            {
+                "monthly_fee": 29.99,
+                "usage_hours": 12.5,
+                "support_requests": 2,
+                "account_age_months": 8,
+                "failed_payments": 1,
+                "autopay_enabled": 1,
+                "region": "europe",
+                "device_type": "mobile",
+                "payment_method": "card",
+            },
+            {
+                "monthly_fee": np.nan,
+                "usage_hours": 20.0,
+                "support_requests": np.nan,
+                "account_age_months": 12,
+                "failed_payments": 0,
+                "autopay_enabled": 0,
+                "region": np.nan,
+                "device_type": "desktop",
+                "payment_method": "paypal",
+            },
+            {
+                "monthly_fee": 55.0,
+                "usage_hours": np.nan,
+                "support_requests": 0,
+                "account_age_months": 24,
+                "failed_payments": 0,
+                "autopay_enabled": 1,
+                "region": "asia",
+                "device_type": np.nan,
+                "payment_method": "card",
+            },
+            {
+                "monthly_fee": 10.0,
+                "usage_hours": 2.0,
+                "support_requests": 4,
+                "account_age_months": np.nan,
+                "failed_payments": 2,
+                "autopay_enabled": np.nan,
+                "region": "america",
+                "device_type": "tablet",
+                "payment_method": np.nan,
+            },
+        ]
+    )
+
+    y = pd.Series([0, 1, 0, 1])
+
+    pipeline, _ = build_churn_pipeline(
+        model_type="logreg",
+        hyperparameters={},
+        random_state=42,
+    )
+
+    pipeline.fit(X, y)
+    predictions = pipeline.predict(X)
+
+    assert len(predictions) == len(X)

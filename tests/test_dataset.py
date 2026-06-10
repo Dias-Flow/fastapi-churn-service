@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import pytest
 
 from app.ml.data import (
@@ -132,8 +133,10 @@ def test_validate_churn_dataset_rejects_invalid_category():
 
     dataframe = pd.DataFrame([row])
 
-    with pytest.raises(ValueError, match="Dataset contains rows"):
+    with pytest.raises(ValueError) as error:
         validate_churn_dataset(dataframe)
+
+    assert "Column region contains invalid categories" in str(error.value)
 
 
 def test_validate_churn_dataset_rejects_invalid_target():
@@ -146,8 +149,10 @@ def test_validate_churn_dataset_rejects_invalid_target():
 
     dataframe = pd.DataFrame([row])
 
-    with pytest.raises(ValueError, match="Dataset contains rows"):
+    with pytest.raises(ValueError) as error:
         validate_churn_dataset(dataframe)
+
+    assert "Target column must contain only 0 and 1 values" in str(error.value)
 
 
 def test_validate_churn_dataset_rejects_invalid_numeric_value():
@@ -160,5 +165,53 @@ def test_validate_churn_dataset_rejects_invalid_numeric_value():
 
     dataframe = pd.DataFrame([row])
 
-    with pytest.raises(ValueError, match="Dataset contains rows"):
+    with pytest.raises(ValueError) as error:
         validate_churn_dataset(dataframe)
+
+    assert "Column monthly_fee must contain positive values" in str(error.value)
+
+def test_validate_churn_dataset_allows_missing_feature_values():
+    """
+    Missing feature values should be allowed.
+
+    They are handled later by SimpleImputer in the preprocessing pipeline.
+    """
+
+    row = VALID_DATASET_ROW.copy()
+    row["monthly_fee"] = np.nan
+    row["region"] = np.nan
+    row["support_requests"] = np.nan
+
+    dataframe = pd.DataFrame([row])
+
+    validate_churn_dataset(dataframe)
+
+def test_validate_churn_dataset_rejects_missing_target():
+    """
+    Missing target values should be rejected.
+
+    The target column is required for supervised training.
+    """
+
+    row = VALID_DATASET_ROW.copy()
+    row["churn"] = np.nan
+
+    dataframe = pd.DataFrame([row])
+
+    with pytest.raises(ValueError, match="Target column contains missing values"):
+        validate_churn_dataset(dataframe)
+
+def test_validate_churn_dataset_rejects_fractional_target():
+    """
+    Dataset rows with fractional churn values should be rejected.
+    """
+
+    row = VALID_DATASET_ROW.copy()
+    row["churn"] = 0.5
+
+    dataframe = pd.DataFrame([row])
+
+    with pytest.raises(ValueError) as error:
+        validate_churn_dataset(dataframe)
+
+    assert "Target column must contain only 0 and 1 values" in str(error.value)
